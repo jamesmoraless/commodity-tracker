@@ -1,0 +1,57 @@
+/* Custom CSS to fix dialog overlay and z-index issues */
+
+/* Ensure dialog overlay has proper background and positioning */
+[data-radix-dialog-overlay] {
+  background: rgba(0, 0, 0, 0.5) !important;
+  z-index: 49 !important;
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+/* Fix dialog content background and positioning */
+[data-radix-dialog-content] {
+  background: white !important;
+  border: 1px solid #d1d5db !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  z-index: 50 !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+/* Fix select dropdown backgrounds */
+[data-radix-select-content] {
+  background: white !important;
+  border: 1px solid #d1d5db !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+  z-index: 52 !important;
+}
+
+/* Fix select items */
+[data-radix-select-item] {
+  background: white !important;
+}
+
+[data-radix-select-item]:hover {
+  background: #f3f4f6 !important;
+}
+
+/* Fix select trigger */
+[data-radix-select-trigger] {
+  background: white !important;
+  border: 1px solid #d1d5db !important;
+}
+
+/* Ensure dialog portal is visible */
+[data-radix-portal] {
+  z-index: 48 !important;
+}
+
+/* Fix any potential backdrop issues */
+.fixed.inset-0 {
+  z-index: 49 !important;
+}
+
