@@ -102,9 +102,23 @@ const CommodityCard = ({ commodity, onRemove, canRemove = true }) => {
 
         {/* Exchange Information */}
         <div className="mt-4 pt-4 border-t border-gray-100">
-          <p className="text-xs text-gray-500 font-medium">
-            {commodity.exchange}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 font-medium">
+              {commodity.exchange}
+            </p>
+            {commodity.source && (
+              <div className="flex items-center space-x-1">
+                <div className={`w-2 h-2 rounded-full ${
+                  commodity.source === 'api' ? 'bg-green-500' : 'bg-orange-500'
+                }`}></div>
+                <span className={`text-xs font-medium ${
+                  commodity.source === 'api' ? 'text-green-600' : 'text-orange-600'
+                }`}>
+                  {commodity.source === 'api' ? 'Live API' : 'Simulated'}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ const CommodityManager = ({
   onRemoveCommodity, 
   onResetToDefault 
 }) => {
-  const defaultCommodityIds = ['steel', 'copper', 'aluminum', 'pvc'];
+  const defaultCommodityIds = ['gold', 'copper', 'aluminum', 'zinc'];
   const isDefaultConfiguration = commodities.length === 4 && 
     commodities.every(c => defaultCommodityIds.includes(c.id));
 

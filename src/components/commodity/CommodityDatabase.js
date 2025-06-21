@@ -195,6 +195,17 @@ export const COMMODITY_DATABASE = [
     color: 'from-gray-400 to-gray-600',
     description: '50 oz Platinum Bar',
     exchange: 'NYMEX'
+  },
+  {
+    id: 'palladium',
+    name: 'Palladium',
+    category: 'precious_metals',
+    basePrice: 1845.00,
+    unit: 'USD/oz',
+    baseChange: -1.35,
+    color: 'from-gray-500 to-gray-700',
+    description: '100 oz Palladium Bar',
+    exchange: 'NYMEX'
   }
 ];
 

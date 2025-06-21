@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw,
   DollarSign,
@@ -17,79 +17,34 @@ import {
 import CommodityCard from './components/commodity/CommodityCard';
 import CommoditySearch from './components/commodity/CommoditySearch';
 import CommodityManager from './components/commodity/CommodityManager';
+import ApiConfiguration from './components/commodity/ApiConfiguration';
+import TariffManager from './components/tariff/TariffManager';
 import NewsHeadlines from './components/news/NewsHeadlines';
 import ReportGenerator from './components/reports/ReportGenerator';
-import { COMMODITY_DATABASE, getCommodityById } from './components/commodity/CommodityDatabase';
-import { fetchTariffNews } from './components/news/NewsService';
+import { COMMODITY_DATABASE } from './components/commodity/CommodityDatabase';
+import { TARIFF_DATABASE, getTariffByHSCode, formatTariffRate, getCountryFlag, getCountryName } from './data/TariffDatabase';
+import { fetchTariffNews, checkNewsApiConfiguration, testNewsApiConnection } from './components/news/NewsService';
+import { fetchRealCommodityData, checkApiConfiguration, testApiConnections } from './components/commodity/CommodityApiService';
 
-// Enhanced data fetching function that works with dynamic commodities
-const fetchRealCommodityData = async (trackedCommodityIds) => {
-  try {
-    const currentTime = new Date();
-    
-    // Get base data for tracked commodities
-    const baseData = trackedCommodityIds.map(id => getCommodityById(id)).filter(Boolean);
-
-    // Add small realistic variations to simulate market movement
-    return baseData.map(commodity => {
-      const variation = (Math.random() - 0.5) * 0.02; // ±1% variation
-      const priceVariation = commodity.basePrice * variation;
-      const changeVariation = (Math.random() - 0.5) * 0.5; // ±0.25% change variation
-      
-      return {
-        ...commodity,
-        price: parseFloat((commodity.basePrice + priceVariation).toFixed(commodity.unit.includes('USD/lb') ? 4 : 2)),
-        change: parseFloat((commodity.baseChange + changeVariation).toFixed(2)),
-        trend: (commodity.baseChange + changeVariation) > 0 ? 'up' : 'down',
-        lastUpdated: currentTime.toISOString()
-      };
-    });
-  } catch (error) {
-    console.error('Error fetching commodity data:', error);
-    return [];
-  }
-};
-
-// Tariff data
-const tariffData = [
-  {
-    country: 'United States',
-    product: 'Steel Pipes',
-    rate: '25%',
-    change: 'increase',
-    effectiveDate: 'Mar 13, 2025',
-    flag: '🇺🇸'
-  },
-  {
-    country: 'China',
-    product: 'PVC Fittings',
-    rate: '10%',
-    change: 'increase',
-    effectiveDate: 'Feb 1, 2025',
-    flag: '🇨🇳'
-  },
-  {
-    country: 'European Union',
-    product: 'Copper Tubes',
-    rate: '5%',
-    change: 'decrease',
-    effectiveDate: 'Jan 15, 2025',
-    flag: '🇪🇺'
-  }
-];
+// Default tracked tariff codes
+const defaultTrackedTariffCodes = ['7326.90.8688', '8481.80.10.50', '3917.23.00'];
 
 function App() {
   // Default tracked commodities
-  const defaultCommodityIds = ['steel', 'copper', 'aluminum', 'pvc'];
+  const defaultCommodityIds = ['gold', 'copper', 'aluminum', 'zinc'];
   
   const [trackedCommodityIds, setTrackedCommodityIds] = useState(defaultCommodityIds);
   const [commodities, setCommodities] = useState([]);
-  const [tariffs] = useState(tariffData);
+  const [trackedTariffCodes, setTrackedTariffCodes] = useState(defaultTrackedTariffCodes);
+  const [trackedTariffs, setTrackedTariffs] = useState([]);
   const [news, setNews] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [loading, setLoading] = useState(false);
+  const [apiStatus, setApiStatus] = useState({ alphaVantage: false, metalsApi: false, newsApi: false });
+  const [apiConfig, setApiConfig] = useState(null);
+  const [newsApiConfig, setNewsApiConfig] = useState(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [commodityData, newsData] = await Promise.all([
@@ -104,13 +59,42 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [trackedCommodityIds]);
 
+  // Initialize API configuration and test connections on mount
   useEffect(() => {
-    fetchData();
+    const initializeApis = async () => {
+      // Check API configuration
+      const config = checkApiConfiguration();
+      const newsConfig = checkNewsApiConfiguration();
+      setApiConfig(config);
+      setNewsApiConfig(newsConfig);
+      
+      // Test API connections
+      try {
+        const [commodityStatus, newsStatus] = await Promise.all([
+          testApiConnections(),
+          testNewsApiConnection()
+        ]);
+        setApiStatus({
+          ...commodityStatus,
+          newsApi: newsStatus
+        });
+      } catch (error) {
+        console.error('Error testing API connections:', error);
+      }
+    };
+    
+    initializeApis();
   }, []);
 
-  // Separate effect for when tracked commodities change
+  // Load tracked tariffs when tariff codes change
+  useEffect(() => {
+    const loadedTariffs = trackedTariffCodes.map(code => getTariffByHSCode(code)).filter(Boolean);
+    setTrackedTariffs(loadedTariffs);
+  }, [trackedTariffCodes]);
+
+  // Fetch commodity data when tracked commodities change
   useEffect(() => {
     if (trackedCommodityIds.length > 0) {
       const fetchCommodityData = async () => {
@@ -129,6 +113,20 @@ function App() {
     }
   }, [trackedCommodityIds]);
 
+  // Fetch news data initially and when needed
+  useEffect(() => {
+    const fetchNewsData = async () => {
+      try {
+        const newsData = await fetchTariffNews();
+        setNews(newsData);
+      } catch (error) {
+        console.error('Error fetching news data:', error);
+      }
+    };
+    
+    fetchNewsData();
+  }, []);
+
   // Commodity management functions
   const handleAddCommodity = (commodity) => {
     if (!trackedCommodityIds.includes(commodity.id) && trackedCommodityIds.length < 12) {
@@ -144,6 +142,23 @@ function App() {
 
   const handleResetToDefault = () => {
     setTrackedCommodityIds(defaultCommodityIds);
+  };
+
+  // Tariff management functions
+  const handleAddTariff = (tariff) => {
+    if (!trackedTariffCodes.includes(tariff.hsCode) && trackedTariffCodes.length < 10) {
+      setTrackedTariffCodes(prev => [...prev, tariff.hsCode]);
+    }
+  };
+
+  const handleRemoveTariff = (hsCode) => {
+    if (trackedTariffCodes.length > 1) {
+      setTrackedTariffCodes(prev => prev.filter(code => code !== hsCode));
+    }
+  };
+
+  const handleResetTariffsToDefault = () => {
+    setTrackedTariffCodes(defaultTrackedTariffCodes);
   };
 
   return (
@@ -164,6 +179,27 @@ function App() {
               </div>
             </div>
             <div className="flex items-center space-x-6">
+              {/* API Status Indicator */}
+              <div className="text-right">
+                <p className="text-sm text-gray-500 flex items-center">
+                  <Globe className="h-4 w-4 mr-1" />
+                  API Status
+                </p>
+                <div className="flex items-center space-x-2 text-xs">
+                  <div className={`w-2 h-2 rounded-full ${apiStatus.alphaVantage ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span className={apiStatus.alphaVantage ? 'text-green-600' : 'text-red-600'}>
+                    AlphaVantage
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${apiStatus.metalsApi ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span className={apiStatus.metalsApi ? 'text-green-600' : 'text-red-600'}>
+                    MetalPriceAPI
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${apiStatus.newsApi ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span className={apiStatus.newsApi ? 'text-green-600' : 'text-red-600'}>
+                    NewsAPI
+                  </span>
+                </div>
+              </div>
               <div className="text-right">
                 <p className="text-sm text-gray-500 flex items-center">
                   <Calendar className="h-4 w-4 mr-1" />
@@ -206,9 +242,9 @@ function App() {
           <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-white/20 hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Active Tariffs</p>
-                <p className="text-4xl font-bold text-gray-900 mt-2">{tariffs.length}</p>
-                <p className="text-sm text-gray-500 mt-1">Recent changes</p>
+                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Tracked Tariffs</p>
+                <p className="text-4xl font-bold text-gray-900 mt-2">{trackedTariffs.length}</p>
+                <p className="text-sm text-gray-500 mt-1">HS codes monitored</p>
               </div>
               <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 rounded-xl">
                 <Scale className="h-8 w-8 text-white" />
@@ -252,10 +288,15 @@ function App() {
                 onAddCommodity={handleAddCommodity}
                 currentCommodities={commodities}
               />
+              <ApiConfiguration
+                apiConfig={apiConfig}
+                apiStatus={apiStatus}
+                newsApiConfig={newsApiConfig}
+              />
               <ReportGenerator
                 commodities={commodities}
                 news={news}
-                tariffs={tariffs}
+                tariffs={trackedTariffs}
               />
             </div>
           </div>
@@ -277,15 +318,22 @@ function App() {
           <NewsHeadlines />
         </div>
 
-        {/* Recent Tariff Changes */}
+        {/* Tracked Tariff Codes */}
         <div>
-          <div className="flex items-center space-x-3 mb-8">
-            <div className="bg-gradient-to-r from-orange-500 to-red-600 p-2 rounded-lg">
-              <AlertCircle className="h-6 w-6 text-white" />
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-r from-orange-500 to-red-600 p-2 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                Tracked Tariff Codes
+              </h2>
             </div>
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Recent Tariff Changes
-            </h2>
+            <TariffManager
+              onAddTariff={handleAddTariff}
+              trackedTariffs={trackedTariffs}
+              onRemoveTariff={handleRemoveTariff}
+            />
           </div>
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/20">
             <div className="overflow-x-auto">
@@ -293,54 +341,94 @@ function App() {
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
                     <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
-                      Country
+                      HS Code
                     </th>
                     <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
-                      Product
+                      Description
                     </th>
                     <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
-                      Rate
+                      Category
                     </th>
                     <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
-                      Change
+                      US Rate
                     </th>
                     <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
-                      Effective Date
+                      EU Rate
+                    </th>
+                    <th className="px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
+                      CN Rate
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {tariffs.map((tariff, index) => (
-                    <tr key={index} className="hover:bg-gray-50/50 transition-colors duration-200">
+                  {trackedTariffs.map((tariff) => (
+                    <tr key={tariff.hsCode} className="hover:bg-gray-50/50 transition-colors duration-200">
                       <td className="px-8 py-6 whitespace-nowrap">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-2xl">{tariff.flag}</span>
-                          <span className="text-sm font-semibold text-gray-900">{tariff.country}</span>
+                        <div className="text-sm font-bold text-blue-600">{tariff.hsCode}</div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="text-sm font-medium text-gray-900 max-w-xs">
+                          {tariff.description}
                         </div>
-                      </td>
-                      <td className="px-8 py-6 whitespace-nowrap text-sm font-medium text-gray-700">
-                        {tariff.product}
-                      </td>
-                      <td className="px-8 py-6 whitespace-nowrap text-lg font-bold text-gray-900">
-                        {tariff.rate}
+                        {tariff.notes && (
+                          <div className="text-xs text-gray-500 mt-1">{tariff.notes}</div>
+                        )}
                       </td>
                       <td className="px-8 py-6 whitespace-nowrap">
-                        <span className={`inline-flex px-4 py-2 text-sm font-bold rounded-full ${
-                          tariff.change === 'increase' 
-                            ? 'bg-red-100 text-red-800 border border-red-200' 
-                            : 'bg-green-100 text-green-800 border border-green-200'
-                        }`}>
-                          {tariff.change === 'increase' ? '↗ Increase' : '↘ Decrease'}
+                        <span className="inline-flex px-3 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                          {tariff.category}
                         </span>
                       </td>
-                      <td className="px-8 py-6 whitespace-nowrap text-sm font-medium text-gray-600">
-                        {tariff.effectiveDate}
+                      <td className="px-8 py-6 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-lg">{getCountryFlag('US')}</span>
+                          <span className={`text-lg font-bold ${
+                            tariff.currentRates.US.rate > 10 ? 'text-red-600' : 
+                            tariff.currentRates.US.rate > 0 ? 'text-orange-600' : 'text-green-600'
+                          }`}>
+                            {formatTariffRate(tariff.currentRates.US.rate)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-lg">{getCountryFlag('EU')}</span>
+                          <span className={`text-lg font-bold ${
+                            tariff.currentRates.EU.rate > 10 ? 'text-red-600' : 
+                            tariff.currentRates.EU.rate > 0 ? 'text-orange-600' : 'text-green-600'
+                          }`}>
+                            {formatTariffRate(tariff.currentRates.EU.rate)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-lg">{getCountryFlag('CN')}</span>
+                          <span className={`text-lg font-bold ${
+                            tariff.currentRates.CN.rate > 10 ? 'text-red-600' : 
+                            tariff.currentRates.CN.rate > 0 ? 'text-orange-600' : 'text-green-600'
+                          }`}>
+                            {formatTariffRate(tariff.currentRates.CN.rate)}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {trackedTariffs.length === 0 && (
+              <div className="text-center py-12">
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Tariff Codes Tracked</h3>
+                <p className="text-gray-500 mb-4">Start tracking tariff codes to monitor rates and changes.</p>
+                <TariffManager
+                  onAddTariff={handleAddTariff}
+                  trackedTariffs={trackedTariffs}
+                  onRemoveTariff={handleRemoveTariff}
+                />
+              </div>
+            )}
           </div>
         </div>
       </main>

@@ -1,8 +1,100 @@
 // News service for fetching tariff and trade news
+const NEWS_API_KEY = import.meta.env.VITE_NEWS_API_KEY;
+
+// Helper functions to categorize news
+const determineCountry = (text) => {
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('canada') || lowerText.includes('canadian')) return 'CA';
+  if (lowerText.includes('united states') || lowerText.includes('us ') || lowerText.includes('america')) return 'US';
+  return 'US'; // Default
+};
+
+const determineCategory = (text) => {
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('tariff') || lowerText.includes('duty')) return 'tariff';
+  if (lowerText.includes('trade') || lowerText.includes('import') || lowerText.includes('export')) return 'trade';
+  return 'policy';
+};
+
+const determineImpact = (text) => {
+  const lowerText = text.toLowerCase();
+  const highImpactWords = ['crisis', 'war', 'major', 'significant', 'massive', 'critical'];
+  const lowImpactWords = ['minor', 'small', 'slight', 'limited'];
+  
+  if (highImpactWords.some(word => lowerText.includes(word))) return 'high';
+  if (lowImpactWords.some(word => lowerText.includes(word))) return 'low';
+  return 'medium';
+};
+
+// Fetch real news from NewsAPI
+export const fetchRealTariffNews = async () => {
+  try {
+    const queries = [
+      'tariff+trade+canada+us',
+      'trade+war+tariff',
+      'customs+duty+import'
+    ];
+    
+    const allNews = [];
+    
+    for (const query of queries) {
+      const response = await fetch(
+        `https://newsapi.org/v2/everything?q=${query}&language=en&sortBy=publishedAt&pageSize=10&apiKey=${NEWS_API_KEY}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`NewsAPI error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.articles) {
+        const processedArticles = data.articles.map(article => ({
+          id: article.url,
+          title: article.title,
+          summary: article.description || article.content?.substring(0, 200) + '...',
+          source: article.source.name,
+          publishedAt: new Date(article.publishedAt),
+          url: article.url,
+          country: determineCountry(article.title + ' ' + (article.description || '')),
+          category: determineCategory(article.title + ' ' + (article.description || '')),
+          impact: determineImpact(article.title + ' ' + (article.description || ''))
+        }));
+        
+        allNews.push(...processedArticles);
+      }
+    }
+    
+    // Filter for US/Canada and remove duplicates
+    const uniqueNews = allNews.filter((news, index, self) => 
+      index === self.findIndex(n => n.id === news.id)
+    );
+    
+    return uniqueNews
+      .filter(news => news.country === 'US' || news.country === 'CA')
+      .slice(0, 8); // Limit to 8 most recent
+      
+  } catch (error) {
+    console.error('Error fetching real news:', error);
+    return [];
+  }
+};
+
+// Main function that tries real API first, then falls back to simulated data
 export const fetchTariffNews = async () => {
   try {
-    // Simulated news data based on recent real headlines
-    // In a real implementation, this would fetch from news APIs
+    // Try to fetch real news first if API key is available
+    if (NEWS_API_KEY && NEWS_API_KEY !== 'demo') {
+      console.log('Fetching real news from NewsAPI...');
+      const realNews = await fetchRealTariffNews();
+      if (realNews && realNews.length > 0) {
+        console.log(`Successfully fetched ${realNews.length} real news articles`);
+        return realNews;
+      }
+    }
+    
+    // Fall back to simulated news data
+    console.log('Using simulated news data');
     const newsData = [
       {
         id: 'news_1',
@@ -136,5 +228,31 @@ export const getImpactColor = (impact) => {
     low: 'bg-green-100 text-green-800 border-green-200'
   };
   return colors[impact] || colors.medium;
+};
+
+// Check NewsAPI configuration
+export const checkNewsApiConfiguration = () => {
+  return {
+    configured: NEWS_API_KEY && NEWS_API_KEY !== 'demo',
+    key: NEWS_API_KEY === 'demo' || !NEWS_API_KEY ? 'Using demo key' : 'API key configured'
+  };
+};
+
+// Test NewsAPI connection
+export const testNewsApiConnection = async () => {
+  try {
+    if (!NEWS_API_KEY || NEWS_API_KEY === 'demo') {
+      return false;
+    }
+    
+    const response = await fetch(
+      `https://newsapi.org/v2/everything?q=test&pageSize=1&apiKey=${NEWS_API_KEY}`
+    );
+    
+    return response.ok;
+  } catch (error) {
+    console.error('NewsAPI test failed:', error);
+    return false;
+  }
 };
 
