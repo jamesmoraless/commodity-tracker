@@ -86,18 +86,20 @@ const CommodityCard = ({ commodity, onRemove, canRemove = true }) => {
           <p className="text-sm font-medium text-gray-600 bg-gray-100 px-3 py-1 rounded-full inline-block">
             {commodity.unit}
           </p>
-          <div className="flex items-center space-x-2">
-            {commodity.trend === 'up' ? (
-              <TrendingUp className="h-5 w-5 text-green-500" />
-            ) : (
-              <TrendingDown className="h-5 w-5 text-red-500" />
-            )}
-            <span className={`text-lg font-bold ${
-              commodity.trend === 'up' ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {formatChange(commodity.change)}
-            </span>
-          </div>
+          {commodity.change !== undefined && (
+            <div className="flex items-center space-x-2">
+              {commodity.trend === 'up' ? (
+                <TrendingUp className="h-5 w-5 text-green-500" />
+              ) : (
+                <TrendingDown className="h-5 w-5 text-red-500" />
+              )}
+              <span className={`text-lg font-bold ${
+                commodity.trend === 'up' ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {formatChange(commodity.change)}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Exchange Information */}

@@ -1,5 +1,6 @@
 // Commodity API Service for fetching real-time prices from AlphaVantage and Metals API
 import { getCommodityById } from './CommodityDatabase';
+import priceHistoryService from './PriceHistoryService';
 
 // API configuration
 const ALPHAVANTAGE_API_KEY = import.meta.env.VITE_ALPHAVANTAGE_API_KEY || 'demo';
@@ -46,6 +47,9 @@ const fetchFromAlphaVantage = async (symbol) => {
     
     const data = await response.json();
     
+    // Debug: Log the full response to see what we're getting
+    console.log('AlphaVantage API Response:', data);
+    
     if (data['Error Message']) {
       throw new Error(data['Error Message']);
     }
@@ -57,6 +61,7 @@ const fetchFromAlphaVantage = async (symbol) => {
     
     const quote = data['Global Quote'];
     if (!quote) {
+      console.warn('Available fields in AlphaVantage response:', Object.keys(data));
       throw new Error('No quote data available');
     }
     
@@ -186,25 +191,30 @@ const fetchCommodityPrice = async (commodityId) => {
 
   // If API data is available, use it; otherwise fall back to simulated data
   if (apiData) {
+    // Calculate change percentage using price history
+    const changePercent = priceHistoryService.updatePrice(commodityId, apiData.price);
+    
     return {
       ...commodity,
       price: apiData.price,
-      change: apiData.changePercent || apiData.change,
-      trend: (apiData.changePercent || apiData.change) > 0 ? 'up' : 'down',
+      change: changePercent,
+      trend: changePercent > 0 ? 'up' : 'down',
       lastUpdated: apiData.lastUpdated || new Date().toISOString(),
       source: 'api'
     };
   } else {
-    // Fallback to simulated data
+    // Fallback to simulated data with realistic price variations
     const variation = (Math.random() - 0.5) * 0.02; // ±1% variation
-    const priceVariation = commodity.basePrice * variation;
-    const changeVariation = (Math.random() - 0.5) * 0.5; // ±0.25% change variation
+    const simulatedPrice = parseFloat((commodity.basePrice * (1 + variation)).toFixed(commodity.unit.includes('USD/lb') ? 4 : 2));
+    
+    // Calculate change percentage using price history for simulated data too
+    const changePercent = priceHistoryService.updatePrice(commodityId, simulatedPrice);
     
     return {
       ...commodity,
-      price: parseFloat((commodity.basePrice + priceVariation).toFixed(commodity.unit.includes('USD/lb') ? 4 : 2)),
-      change: parseFloat((commodity.baseChange + changeVariation).toFixed(2)),
-      trend: (commodity.baseChange + changeVariation) > 0 ? 'up' : 'down',
+      price: simulatedPrice,
+      change: changePercent,
+      trend: changePercent > 0 ? 'up' : 'down',
       lastUpdated: new Date().toISOString(),
       source: 'simulated'
     };
@@ -261,7 +271,7 @@ export const testApiConnections = async () => {
     metalsApi: false
   };
   
-  // Test AlphaVantage with a simple query
+  // Test AlphaVantage with a simple stock query (AAPL)
   try {
     const avTest = await fetchFromAlphaVantage('AAPL');
     tests.alphaVantage = avTest !== null;

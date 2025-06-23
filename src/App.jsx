@@ -25,6 +25,7 @@ import { COMMODITY_DATABASE } from './components/commodity/CommodityDatabase';
 import { TARIFF_DATABASE, getTariffByHSCode, formatTariffRate, getCountryFlag, getCountryName } from './data/TariffDatabase';
 import { fetchTariffNews, checkNewsApiConfiguration, testNewsApiConnection } from './components/news/NewsService';
 import { fetchRealCommodityData, checkApiConfiguration, testApiConnections } from './components/commodity/CommodityApiService';
+import priceHistoryService from './components/commodity/PriceHistoryService';
 
 // Default tracked tariff codes
 const defaultTrackedTariffCodes = ['7326.90.8688', '8481.80.10.50', '3917.23.00'];
@@ -137,11 +138,15 @@ function App() {
   const handleRemoveCommodity = (commodityId) => {
     if (trackedCommodityIds.length > 1) { // Keep at least one commodity
       setTrackedCommodityIds(prev => prev.filter(id => id !== commodityId));
+      // Clear price history for removed commodity
+      priceHistoryService.clearHistory(commodityId);
     }
   };
 
   const handleResetToDefault = () => {
     setTrackedCommodityIds(defaultCommodityIds);
+    // Clear all price history when resetting
+    priceHistoryService.clearAllHistory();
   };
 
   // Tariff management functions
