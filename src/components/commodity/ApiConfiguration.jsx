@@ -51,7 +51,7 @@ const ApiConfiguration = ({ apiConfig, apiStatus, newsApiConfig }) => {
               <div className="flex items-center justify-between p-3 bg-white rounded border">
                 <div className="flex items-center space-x-3">
                   <div className={`w-3 h-3 rounded-full ${apiStatus?.newsApi ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="font-medium">NewsAPI</span>
+                  <span className="font-medium">Guardian API</span>
                 </div>
                 <Badge className={apiStatus?.newsApi ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                   {apiStatus?.newsApi ? 'Connected' : 'Disconnected'}
@@ -106,7 +106,7 @@ const ApiConfiguration = ({ apiConfig, apiStatus, newsApiConfig }) => {
                   ) : (
                     <XCircle className="h-4 w-4 text-red-500 mr-2" />
                   )}
-                  NewsAPI
+                  Guardian API
                 </h4>
                 <p className="text-sm text-gray-600 mb-2">
                   Used for: Real-time tariff & trade news
@@ -155,13 +155,13 @@ const ApiConfiguration = ({ apiConfig, apiStatus, newsApiConfig }) => {
               </div>
 
               <div className="p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">3. NewsAPI Setup</h4>
+                <h4 className="font-medium text-gray-900 mb-2">3. Guardian API Setup</h4>
                 <ul className="text-sm text-gray-600 space-y-1 mb-3">
-                  <li>• Visit <a href="https://newsapi.org/register" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center">
-                    NewsAPI <ExternalLink className="h-3 w-3 ml-1" />
+                  <li>• Visit <a href="https://open-platform.theguardian.com/access/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center">
+                    Guardian Open Platform <ExternalLink className="h-3 w-3 ml-1" />
                   </a></li>
-                  <li>• Sign up for a free API key</li>
-                  <li>• Add <code className="bg-gray-200 px-1 rounded">VITE_NEWS_API_KEY=your_key</code> to your .env file</li>
+                  <li>• Sign up for a free API key (completely free, no restrictions)</li>
+                  <li>• Add <code className="bg-gray-200 px-1 rounded">VITE_GUARDIAN_API_KEY=your_key</code> to your .env file</li>
                 </ul>
               </div>
 
@@ -173,7 +173,7 @@ const ApiConfiguration = ({ apiConfig, apiStatus, newsApiConfig }) => {
                 <pre className="text-xs bg-yellow-100 p-2 rounded border text-yellow-900">
 {`VITE_ALPHAVANTAGE_API_KEY=your_alphavantage_key_here
 VITE_METALS_API_KEY=your_metals_api_key_here
-VITE_NEWS_API_KEY=your_newsapi_key_here`}
+VITE_GUARDIAN_API_KEY=your_guardian_api_key_here`}
                 </pre>
                 <p className="text-xs text-yellow-700 mt-2">
                   After adding the keys, restart the development server.

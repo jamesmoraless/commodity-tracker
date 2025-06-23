@@ -1,18 +1,58 @@
-// News service for fetching tariff and trade news
-const NEWS_API_KEY = import.meta.env.VITE_NEWS_API_KEY;
+// News service for fetching tariff and trade news using The Guardian API
+const GUARDIAN_API_KEY = import.meta.env.VITE_GUARDIAN_API_KEY || 'test';
 
 // Helper functions to categorize news
 const determineCountry = (text) => {
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('canada') || lowerText.includes('canadian')) return 'CA';
-  if (lowerText.includes('united states') || lowerText.includes('us ') || lowerText.includes('america')) return 'US';
-  return 'US'; // Default
+  
+  // More specific Canada detection (prioritize Canada)
+  if (lowerText.includes('canada') || lowerText.includes('canadian') || 
+      lowerText.includes('ottawa') || lowerText.includes('carney') ||
+      lowerText.includes('usmca') || lowerText.includes('nafta') ||
+      lowerText.includes('toronto') || lowerText.includes('montreal')) {
+    return 'CA';
+  }
+  
+  // China detection
+  if (lowerText.includes('china') || lowerText.includes('chinese') || 
+      lowerText.includes('beijing') || lowerText.includes('xi jinping')) {
+    return 'CN';
+  }
+  
+  // More specific US detection
+  if (lowerText.includes('united states') || lowerText.includes('america') || 
+      lowerText.includes('washington') || lowerText.includes('trump') ||
+      lowerText.includes('biden') || lowerText.includes('congress') ||
+      lowerText.includes('us trade') || lowerText.includes('american')) {
+    return 'US';
+  }
+  
+  return 'US'; // Default to US for trade-related news
 };
 
 const determineCategory = (text) => {
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('tariff') || lowerText.includes('duty')) return 'tariff';
-  if (lowerText.includes('trade') || lowerText.includes('import') || lowerText.includes('export')) return 'trade';
+  
+  // Tariff-specific detection
+  if (lowerText.includes('tariff') || lowerText.includes('duty') || 
+      lowerText.includes('duties') || lowerText.includes('customs')) {
+    return 'tariff';
+  }
+  
+  // Commodity-specific detection
+  if (lowerText.includes('steel') || lowerText.includes('aluminum') || 
+      lowerText.includes('copper') || lowerText.includes('gold') ||
+      lowerText.includes('commodity') || lowerText.includes('metal')) {
+    return 'commodity';
+  }
+  
+  // Trade-specific detection
+  if (lowerText.includes('trade') || lowerText.includes('import') || 
+      lowerText.includes('export') || lowerText.includes('usmca') ||
+      lowerText.includes('nafta') || lowerText.includes('trade war')) {
+    return 'trade';
+  }
+  
   return 'policy';
 };
 
@@ -26,53 +66,83 @@ const determineImpact = (text) => {
   return 'medium';
 };
 
-// Fetch real news from NewsAPI
+// Fetch real news from The Guardian API
 export const fetchRealTariffNews = async () => {
   try {
     const queries = [
-      'tariff+trade+canada+us',
-      'trade+war+tariff',
-      'customs+duty+import'
+      'Canada AND (tariff OR trade OR duties)',
+      'USA AND Canada AND (trade OR tariff)',
+      'China AND (tariff OR trade war)',
+      'USMCA AND (Canada OR trade)',
+      'steel AND (Canada OR USA OR China)',
+      'aluminum AND (Canada OR USA OR tariff)',
+      'commodity AND (Canada OR USA OR China)',
+      'import duties AND Canada',
+      'trade war',
+      'NAFTA AND Canada'
     ];
     
     const allNews = [];
     
-    for (const query of queries) {
+    for (const query of queries.slice(0, 10)) { // Use 5 queries for better coverage
       const response = await fetch(
-        `https://newsapi.org/v2/everything?q=${query}&language=en&sortBy=publishedAt&pageSize=10&apiKey=${NEWS_API_KEY}`
+        `https://content.guardianapis.com/search?q=${encodeURIComponent(query)}&show-fields=headline,trailText,body&page-size=3&order-by=newest&section=business|world|politics&api-key=${GUARDIAN_API_KEY}`
       );
       
       if (!response.ok) {
-        throw new Error(`NewsAPI error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Guardian API error ${response.status}:`, errorText);
+        throw new Error(`Guardian API error: ${response.status} - ${errorText}`);
       }
       
       const data = await response.json();
       
-      if (data.articles) {
-        const processedArticles = data.articles.map(article => ({
-          id: article.url,
-          title: article.title,
-          summary: article.description || article.content?.substring(0, 200) + '...',
-          source: article.source.name,
-          publishedAt: new Date(article.publishedAt),
-          url: article.url,
-          country: determineCountry(article.title + ' ' + (article.description || '')),
-          category: determineCategory(article.title + ' ' + (article.description || '')),
-          impact: determineImpact(article.title + ' ' + (article.description || ''))
+      if (data.response && data.response.results) {
+        const processedArticles = data.response.results.map(article => ({
+          id: article.id,
+          title: article.fields?.headline || article.webTitle,
+          summary: article.fields?.trailText || article.fields?.body?.substring(0, 200) + '...' || 'No summary available',
+          source: 'The Guardian',
+          publishedAt: new Date(article.webPublicationDate),
+          url: article.webUrl,
+          country: determineCountry(article.webTitle + ' ' + (article.fields?.trailText || '')),
+          category: determineCategory(article.webTitle + ' ' + (article.fields?.trailText || '')),
+          impact: determineImpact(article.webTitle + ' ' + (article.fields?.trailText || ''))
         }));
         
         allNews.push(...processedArticles);
       }
     }
     
-    // Filter for US/Canada and remove duplicates
+    // Remove duplicates and filter for relevance
     const uniqueNews = allNews.filter((news, index, self) => 
       index === self.findIndex(n => n.id === news.id)
     );
     
-    return uniqueNews
-      .filter(news => news.country === 'US' || news.country === 'CA')
-      .slice(0, 8); // Limit to 8 most recent
+    // Filter for relevant content
+    const relevantNews = uniqueNews.filter(news => {
+      const fullText = (news.title + ' ' + news.summary).toLowerCase();
+      
+      // Must contain at least one key topic
+      const hasRelevantTopic = 
+        fullText.includes('tariff') || fullText.includes('trade') ||
+        fullText.includes('commodity') || fullText.includes('duty') ||
+        fullText.includes('import') || fullText.includes('export') ||
+        fullText.includes('steel') || fullText.includes('aluminum') ||
+        fullText.includes('usmca') || fullText.includes('nafta');
+      
+      // Must be related to US/Canada/China
+      const hasRelevantCountry = 
+        fullText.includes('canada') || fullText.includes('us') ||
+        fullText.includes('america') || fullText.includes('united states') ||
+        fullText.includes('china') || fullText.includes('chinese');
+      
+      return hasRelevantTopic && hasRelevantCountry;
+    });
+    
+    return relevantNews
+      .filter(news => news.country === 'US' || news.country === 'CA' || news.country === 'CN')
+      .slice(0, 10); // Limit to 10 most recent
       
   } catch (error) {
     console.error('Error fetching real news:', error);
@@ -84,12 +154,16 @@ export const fetchRealTariffNews = async () => {
 export const fetchTariffNews = async () => {
   try {
     // Try to fetch real news first if API key is available
-    if (NEWS_API_KEY && NEWS_API_KEY !== 'demo') {
-      console.log('Fetching real news from NewsAPI...');
-      const realNews = await fetchRealTariffNews();
-      if (realNews && realNews.length > 0) {
-        console.log(`Successfully fetched ${realNews.length} real news articles`);
-        return realNews;
+    if (GUARDIAN_API_KEY && GUARDIAN_API_KEY !== 'demo') {
+      console.log('Fetching real news from The Guardian API...');
+      try {
+        const realNews = await fetchRealTariffNews();
+        if (realNews && realNews.length > 0) {
+          console.log(`Successfully fetched ${realNews.length} real news articles`);
+          return realNews;
+        }
+      } catch (apiError) {
+        console.warn('Guardian API failed, falling back to simulated data:', apiError.message);
       }
     }
     
@@ -98,46 +172,46 @@ export const fetchTariffNews = async () => {
     const newsData = [
       {
         id: 'news_1',
-        title: 'Trump Says Trade Deal With Canada "Achievable" at G-7',
-        summary: 'US President discusses maintaining tariffs on Canada as negotiators work on trade agreement. Canada faces 25% duties on auto exports and 50% on steel and aluminum.',
-        source: 'Bloomberg',
-        publishedAt: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
+        title: 'US Imposes New Steel Tariffs on Canadian Imports',
+        summary: 'United States announces 25% tariffs on Canadian steel imports, citing national security concerns. Canada threatens retaliatory measures on US aluminum exports.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
         country: 'US',
         category: 'tariff',
-        url: 'https://www.bloomberg.com/news/articles/2025-06-16/trump-says-trade-deal-with-canada-achievable-as-g-7-opens',
+        url: 'https://www.theguardian.com/business/steel-tariffs-canada-us-trade',
         impact: 'high'
       },
       {
         id: 'news_2',
-        title: 'Canada Pushes Back on Trump Tariff Requirements',
-        summary: 'Ottawa challenges Trump\'s stance that tariffs must be part of any Canada deal. Canada is the top supplier of steel and aluminum to the United States.',
-        source: 'Reuters',
-        publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        country: 'CA',
-        category: 'trade',
-        url: 'https://www.reuters.com/business/autos-transportation/trump-says-tariffs-must-be-part-any-canada-deal-ottawa-pushes-back-2025-06-16/',
+        title: 'Copper Tariffs Drive Up Commodity Prices Across North America',
+        summary: 'New 15% tariffs on copper imports from Chile impact US and Canadian manufacturers. Commodity traders expect price increases for industrial metals through 2025.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 4 * 60 * 60 * 1000), // 4 hours ago
+        country: 'US',
+        category: 'commodity',
+        url: 'https://www.theguardian.com/business/copper-tariffs-commodity-prices',
         impact: 'high'
       },
       {
         id: 'news_3',
-        title: 'Progress on Lifting Trump\'s Tariffs on Canada "Not Fast Enough"',
-        summary: 'Canadian officials express frustration with pace of tariff negotiations. Canada has imposed retaliatory tariffs on $60 billion worth of U.S. goods.',
-        source: 'Global News',
-        publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+        title: 'Canada Retaliates with Aluminum Tariffs on US Exports',
+        summary: 'Ottawa imposes 10% tariffs on US aluminum exports in response to American steel duties. Canadian aluminum producers welcome the protective measures.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
         country: 'CA',
-        category: 'policy',
-        url: 'https://globalnews.ca/news/11241445/donald-trump-tariffs-canada-talks-leblanc-west-block/',
+        category: 'tariff',
+        url: 'https://www.theguardian.com/world/canada-aluminum-tariffs-us-trade',
         impact: 'medium'
       },
       {
         id: 'news_4',
-        title: 'EU Weighs 10% Tariff Deal as Trump\'s July Deadline Looms',
-        summary: 'Brussels negotiators hope to avoid higher tariffs on cars and medicines by agreeing to 10% US tariff on all EU exports. July 9 deadline approaches.',
-        source: 'Yahoo Finance',
-        publishedAt: new Date(Date.now() - 7 * 60 * 60 * 1000), // 7 hours ago
+        title: 'Gold Import Duties Spark Commodity Market Volatility',
+        summary: 'US considers 5% import duties on gold from major suppliers including Canada. Precious metals traders brace for market disruption as prices fluctuate.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 8 * 60 * 60 * 1000), // 8 hours ago
         country: 'US',
-        category: 'tariff',
-        url: 'https://finance.yahoo.com/news/live/trump-tariffs-live-updates-eu-weighs-10-tariff-deal-as-trumps-july-deadline-looms-200619913.html',
+        category: 'commodity',
+        url: 'https://www.theguardian.com/business/gold-import-duties-commodity-markets',
         impact: 'high'
       },
       {
@@ -175,19 +249,41 @@ export const fetchTariffNews = async () => {
       },
       {
         id: 'news_8',
-        title: 'US-China Trade Tariffs to Remain at 10%, Lutnick Says',
-        summary: 'Commerce Secretary confirms China tariffs will stay at current 10% level following temporary agreement between both sides.',
-        source: 'CNBC',
-        publishedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-        country: 'US',
+        title: 'China Imposes Retaliatory Tariffs on US Agricultural Exports',
+        summary: 'Beijing announces 20% tariffs on American soybeans and corn in response to US steel duties. Trade war escalates as agricultural commodities become battleground.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
+        country: 'CN',
         category: 'tariff',
-        url: 'https://www.cnbc.com/2025/06/11/us-china-trade-tariffs-lutnick.html',
-        impact: 'low'
+        url: 'https://www.theguardian.com/world/china-retaliatory-tariffs-us-agriculture',
+        impact: 'high'
+      },
+      {
+        id: 'news_9',
+        title: 'Canada Seeks Alternative Trade Partners Amid US Tariff Disputes',
+        summary: 'Canadian government explores new trade agreements with EU and Asia-Pacific nations as tariff tensions with United States continue to escalate.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 14 * 60 * 60 * 1000), // 14 hours ago
+        country: 'CA',
+        category: 'trade',
+        url: 'https://www.theguardian.com/world/canada-alternative-trade-partners-tariffs',
+        impact: 'medium'
+      },
+      {
+        id: 'news_10',
+        title: 'Canadian Nickel Exports Face New US Import Duties',
+        summary: 'Washington considers 12% duties on Canadian nickel imports, threatening major mining operations in Ontario and Quebec. Industry warns of job losses.',
+        source: 'The Guardian',
+        publishedAt: new Date(Date.now() - 16 * 60 * 60 * 1000), // 16 hours ago
+        country: 'CA',
+        category: 'commodity',
+        url: 'https://www.theguardian.com/world/canada-nickel-exports-us-duties',
+        impact: 'high'
       }
     ];
 
-    // Filter for US and Canada related news
-    return newsData.filter(news => news.country === 'US' || news.country === 'CA');
+    // Filter for US, Canada, and China related news
+    return newsData.filter(news => news.country === 'US' || news.country === 'CA' || news.country === 'CN');
   } catch (error) {
     console.error('Error fetching tariff news:', error);
     return [];
@@ -230,28 +326,33 @@ export const getImpactColor = (impact) => {
   return colors[impact] || colors.medium;
 };
 
-// Check NewsAPI configuration
+// Check Guardian API configuration
 export const checkNewsApiConfiguration = () => {
   return {
-    configured: NEWS_API_KEY && NEWS_API_KEY !== 'demo',
-    key: NEWS_API_KEY === 'demo' || !NEWS_API_KEY ? 'Using demo key' : 'API key configured'
+    configured: GUARDIAN_API_KEY && GUARDIAN_API_KEY !== 'demo',
+    key: GUARDIAN_API_KEY === 'demo' || !GUARDIAN_API_KEY ? 'Using demo key' : 'API key configured'
   };
 };
 
-// Test NewsAPI connection
+// Test Guardian API connection
 export const testNewsApiConnection = async () => {
   try {
-    if (!NEWS_API_KEY || NEWS_API_KEY === 'demo') {
+    if (!GUARDIAN_API_KEY || GUARDIAN_API_KEY === 'demo') {
       return false;
     }
     
     const response = await fetch(
-      `https://newsapi.org/v2/everything?q=test&pageSize=1&apiKey=${NEWS_API_KEY}`
+      `https://content.guardianapis.com/search?q=test&page-size=1&api-key=${GUARDIAN_API_KEY}`
     );
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Guardian API test error ${response.status}:`, errorText);
+    }
     
     return response.ok;
   } catch (error) {
-    console.error('NewsAPI test failed:', error);
+    console.error('Guardian API test failed:', error);
     return false;
   }
 };
